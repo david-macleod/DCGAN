@@ -140,7 +140,8 @@ class DCGAN(object):
 
                 # Discriminator backwards pass and parameter update
                 dis_optimizer.zero_grad()
-                dis_loss.backward()
+                # N.B. we need to retain graph as we are not re-running gen_image_batch https://stackoverflow.com/questions/46774641
+                dis_loss.backward(retain_graph=True)
                 dis_optimizer.step()
                 
                 # Generator forward pass 
