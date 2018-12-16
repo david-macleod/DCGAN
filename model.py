@@ -3,9 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from utils import read_images, init_params
+from torchvision.utils import make_grid, save_image
+from tqdm import tqdm, trange
+from pathlib import Path
+from utils import create_dataset, init_params
 
-
+#TODO Add second backwards pass for generators as in DCGAN-tensorflow
 #TODO Try batch norm in generator as in pytorch example
 
 class Discriminator(nn.Module):
@@ -109,20 +112,22 @@ class DCGAN(object):
     def optimizer(self, parameters):
         return torch.optim.Adam(params=parameters, lr=0.0002, betas=(0.9, 0.5))
 
-    def train(self, image_dataset, n_epochs, batch_size=32):
-
+    def train(self, image_dataset, n_epochs, output_dir, max_batch_size=32, z_sample=None):
+        '''
+        :param image_dataset: list of tensors (C,H,W)
+        '''
         dis_optimizer = self.optimizer(self.discriminator.parameters())
         gen_optimizer = self.optimizer(self.generator.parameters())
 
         loss_function = nn.BCEWithLogitsLoss()
         
-        for epoch in range(n_epochs):
-            print('Epoch:', epoch)
+        for epoch in trange(n_epochs, desc='Epoch', leave=True):
 
-            data_loader = DataLoader(image_dataset, batch_size=batch_size, shuffle=True)
+            data_loader = DataLoader(image_dataset, batch_size=max_batch_size, shuffle=True)
 
-            for image_batch in data_loader:
+            for image_batch in tqdm(data_loader, desc='Batch'):
 
+                image_batch = image_batch[0] # There are no target labels
                 batch_size = image_batch.shape[0]
                 
                 # Generate images from random inputs
@@ -154,6 +159,18 @@ class DCGAN(object):
                 gen_loss.backward()
                 gen_optimizer.step()
 
+            if epoch % 5 == 0:
+                output_path = Path(output_dir)
+                torch.save(self, output_path / f'checkpoint_{epoch}.pt')
+
+                if z_sample is not None:
+                    with torch.no_grad():
+                        gen_image_sample = self.generator(z_sample)
+                    # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
+                    image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
+                    save_image(image_grid, output_path / f'sample_{epoch}.jpg')
+                        
+
 
 if __name__ == '__main__':
 
@@ -161,13 +178,22 @@ if __name__ == '__main__':
     image_dim = 150
     z_size = 100
 
-    image_dataset = read_images('images')
+    image_dataset = create_dataset('images')
+
+    # Random noise inputs for evaluation
+    z_sample = torch.randn(5, z_size)
 
     discriminator = Discriminator(input_dim=image_dim, input_ch=image_ch)
     generator = Generator(input_size=z_size, output_dim=image_dim, output_ch=image_ch)
 
     dcgan = DCGAN(discriminator, generator)
 
-    dcgan.train(image_dataset, 10)
+    dcgan.train(
+        image_dataset=image_dataset,
+        n_epochs=6,
+        output_dir='train',
+        max_batch_size=5, #32
+        z_sample=z_sample
+    )
 
     print('end')
