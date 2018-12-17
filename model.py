@@ -67,7 +67,7 @@ class Generator(nn.Module):
         self.kernel = 5
         self.stride = 2
         self.padding = self.kernel // self.stride
-        self.output_padding = 1 # Required to ensure shape  is inverse of conv2d
+        self.output_padding = 1 
 
         self.deconv0_in_dim = int(np.ceil(self.output_dim / self.stride ** 4))
         self.deconv0_in_ch = 512
@@ -78,19 +78,20 @@ class Generator(nn.Module):
         self.linear = nn.Linear(self.input_size, self.deconv0_in_ch * self.deconv0_in_dim ** 2) 
 
         self.deconv_block = nn.Sequential(
+            # output_padding required to ensure shape is inverse of conv2d
             self.deconv_layer(self.deconv0_in_ch, self.deconv0_out_ch),
-            self.deconv_layer(self.deconv0_out_ch, self.deconv1_out_ch),
+            self.deconv_layer(self.deconv0_out_ch, self.deconv1_out_ch, output_padding=1),
             self.deconv_layer(self.deconv1_out_ch, self.deconv2_out_ch),
-            self.deconv_layer(self.deconv2_out_ch, self.output_ch)
+            self.deconv_layer(self.deconv2_out_ch, self.output_ch, output_padding=1)
         )
 
         # Initialize parameter values
         self.apply(init_params)
 
-    def deconv_layer(self, in_ch, out_ch):
+    def deconv_layer(self, in_ch, out_ch, output_padding=0):
         ''' Standard transposed convolutional layer '''
         sequence = nn.Sequential(
-            nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, self.output_padding),
+            nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, output_padding),
             nn.ReLU()
         )
         return sequence
