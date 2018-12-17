@@ -6,7 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm, trange
 from pathlib import Path
-from utils import create_dataset, init_params
+from utils import create_dataset, init_params, inspect_tensor
 
 #TODO Add second backwards pass for generators as in DCGAN-tensorflow
 #TODO Try batch norm in generator as in pytorch example
@@ -41,9 +41,8 @@ class Discriminator(nn.Module):
 
     def conv_layer(self, in_ch, out_ch, batch_norm=False):
         ''' Standard convolutional layer '''
-        # bias=False https://stackoverflow.com/questions/46256747
         sequence = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, self.kernel, self.stride, self.padding, bias=False),
+            nn.Conv2d(in_ch, out_ch, self.kernel, self.stride, self.padding),
             nn.LeakyReLU(0.2)
         )
         if batch_norm:
@@ -68,6 +67,7 @@ class Generator(nn.Module):
         self.kernel = 5
         self.stride = 2
         self.padding = self.kernel // self.stride
+        self.output_padding = 1 # Required to ensure shape  is inverse of conv2d
 
         self.deconv0_in_dim = int(np.ceil(self.output_dim / self.stride ** 4))
         self.deconv0_in_ch = 512
@@ -90,7 +90,7 @@ class Generator(nn.Module):
     def deconv_layer(self, in_ch, out_ch):
         ''' Standard transposed convolutional layer '''
         sequence = nn.Sequential(
-            nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, bias=False),
+            nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, self.output_padding),
             nn.ReLU()
         )
         return sequence
@@ -181,12 +181,19 @@ if __name__ == '__main__':
     image_dataset = create_dataset('images')
 
     # Random noise inputs for evaluation
-    z_sample = torch.randn(5, z_size)
+    z_sample = torch.randn(16, z_size)
 
     discriminator = Discriminator(input_dim=image_dim, input_ch=image_ch)
     generator = Generator(input_size=z_size, output_dim=image_dim, output_ch=image_ch)
 
     dcgan = DCGAN(discriminator, generator)
+
+    for decon in generator.deconv_block:
+        decon.register_forward_hook(inspect_tensor)
+
+    print('')
+    for con in discriminator.conv_block:
+        con.register_forward_hook(inspect_tensor)
 
     dcgan.train(
         image_dataset=image_dataset,
