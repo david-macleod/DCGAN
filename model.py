@@ -2,11 +2,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.dataloader import DataLoader
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm, trange
 from pathlib import Path
 from utils import create_dataset, init_params, inspect_tensor
+
+''' Based on DCGAN-tensorflow project, modifications highlighted '''
 
 #TODO Add second backwards pass for generators as in DCGAN-tensorflow
 #TODO Try batch norm in generator as in pytorch example
@@ -133,7 +135,7 @@ class DCGAN(object):
                 
                 # Generate images from random inputs
                 # ganhacks suggests normal dist (uniform dist in original TF)
-                z_batch = torch.randn(batch_size, generator.input_size)
+                z_batch = torch.randn(batch_size, self.generator.input_size)
                 gen_image_batch = self.generator(z_batch)
 
                 # Discriminator forward pass with real and fake batches
@@ -179,7 +181,7 @@ if __name__ == '__main__':
     image_dim = 150
     z_size = 100
 
-    image_dataset = create_dataset('images')
+    image_dataset = create_dataset(root_dir='images')
 
     # Random noise inputs for evaluation
     z_sample = torch.randn(16, z_size)
@@ -189,19 +191,10 @@ if __name__ == '__main__':
 
     dcgan = DCGAN(discriminator, generator)
 
-    for decon in generator.deconv_block:
-        decon.register_forward_hook(inspect_tensor)
-
-    print('')
-    for con in discriminator.conv_block:
-        con.register_forward_hook(inspect_tensor)
-
     dcgan.train(
         image_dataset=image_dataset,
-        n_epochs=6,
+        n_epochs=100,
         output_dir='train',
-        max_batch_size=5, #32
+        max_batch_size=16,
         z_sample=z_sample
     )
-
-    print('end')
