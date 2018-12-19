@@ -134,7 +134,7 @@ class DCGAN(object):
         logits_fake = self.discriminator(gen_image_batch).squeeze()
 
         dis_loss_real = self.loss_function(logits_real, torch.ones(image_batch.shape[0]))
-        dis_loss_fake = self.loss_function(logits_fake, torch.zeros(image_batch.shape[0]))
+        dis_loss_fake = self.loss_function(logits_fake, torch.zeros(z_batch.shape[0]))
         dis_loss = dis_loss_real + dis_loss_fake
 
         # Discriminator backwards pass and parameter update
@@ -151,7 +151,7 @@ class DCGAN(object):
         # Generator forward pass 
         # Target values positive explanation https://arxiv.org/pdf/1701.00160.pdf section:3.2.3
         logits_fake = self.discriminator(gen_image_batch)
-        gen_loss = self.loss_function(logits_fake, torch.ones(batch_size))
+        gen_loss = self.loss_function(logits_fake, torch.ones(z_batch.shape[0]))
 
         # Generator backwards pass and parameter update
         self.gen_optimizer.zero_grad()
@@ -182,8 +182,7 @@ class DCGAN(object):
             if epoch % 5 == 0:
                 self.save_checkpoint(epoch, output_dir, z_sample)
                 
-    @staticmethod
-    def save_checkpoint(epoch, output_dir, z_sample=None):
+    def save_checkpoint(self, epoch, output_dir, z_sample=None):
         output_path = Path(output_dir)
         torch.save(self, output_path / f'checkpoint_{epoch}.pt')
 
