@@ -105,10 +105,9 @@ class Generator(nn.Module):
         x = self.deconv_block(x)
         return torch.tanh(x)
 
-    @staticmethod
-    def z_sample(*size):
+    def z_sample(self, batch_size):
         ''' Random noise for input to generator '''
-        return torch.FloatTensor(*size).uniform(-1, 1)
+        return torch.FloatTensor(batch_size, self.input_size).uniform_(-1, 1)
 
     
 class DCGAN(object):
@@ -128,15 +127,14 @@ class DCGAN(object):
     def discriminator_update(self, image_batch, z_batch):
         ''' Run discriminator forward/backward and update parameters '''
         # Generate images from random inputs
-        z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
         gen_image_batch = self.generator(z_batch)
 
         # Discriminator forward pass with real and fake batches
         logits_real = self.discriminator(image_batch).squeeze()
         logits_fake = self.discriminator(gen_image_batch).squeeze()
 
-        dis_loss_real = self.loss_function(logits_real, torch.ones(batch_size))
-        dis_loss_fake = self.loss_function(logits_fake, torch.zeros(batch_size))
+        dis_loss_real = self.loss_function(logits_real, torch.ones(image_batch.shape[0]))
+        dis_loss_fake = self.loss_function(logits_fake, torch.zeros(image_batch.shape[0]))
         dis_loss = dis_loss_real + dis_loss_fake
 
         # Discriminator backwards pass and parameter update
@@ -148,7 +146,6 @@ class DCGAN(object):
     def generator_update(self, z_batch):
         ''' Run generator forward/backward and update parameters '''
         # Generate images from random inputs
-        z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
         gen_image_batch = self.generator(z_batch)
 
         # Generator forward pass 
@@ -161,7 +158,6 @@ class DCGAN(object):
         gen_loss.backward()
         self.gen_optimizer.step()
 
-
     def train(self, image_dataset, n_epochs, output_dir, max_batch_size=32, z_sample=None):
         '''
         :param image_dataset: list of tensors (C,H,W)
@@ -173,7 +169,8 @@ class DCGAN(object):
             for image_batch in tqdm(data_loader, desc='Batch'):
 
                 image_batch = image_batch[0] # There are no target labels
-                batch_size = image_batch.shape[0]
+
+                z_batch = self.generator.z_sample(image_batch.shape[0])
 
                 self.discriminator_update(image_batch, z_batch)
 
@@ -213,11 +210,11 @@ if __name__ == '__main__':
     dcgan = DCGAN(discriminator, generator)
 
     # Random noise inputs for evaluation
-    z_sample = generator.z_sample(16, z_size)
+    z_sample = generator.z_sample(batch_size=16)
 
     dcgan.train(
         image_dataset=image_dataset,
-        n_epochs=100,
+        n_epochs=20,
         output_dir='train',
         max_batch_size=16,
         z_sample=z_sample
