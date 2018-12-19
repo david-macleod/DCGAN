@@ -117,18 +117,55 @@ class DCGAN(object):
         self.discriminator = discriminator
         self.generator = generator
 
+        self.dis_optimizer = self.optimizer(self.discriminator.parameters())
+        self.gen_optimizer = self.optimizer(self.generator.parameters())
+
+        self.loss_function = nn.BCEWithLogitsLoss()
+
     def optimizer(self, parameters):
         return torch.optim.Adam(params=parameters, lr=0.0002, betas=(0.9, 0.5))
+
+    def discriminator_update(self, image_batch, z_batch):
+        ''' Run discriminator forward/backward and update parameters '''
+        # Generate images from random inputs
+        z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
+        gen_image_batch = self.generator(z_batch)
+
+        # Discriminator forward pass with real and fake batches
+        logits_real = self.discriminator(image_batch).squeeze()
+        logits_fake = self.discriminator(gen_image_batch).squeeze()
+
+        dis_loss_real = self.loss_function(logits_real, torch.ones(batch_size))
+        dis_loss_fake = self.loss_function(logits_fake, torch.zeros(batch_size))
+        dis_loss = dis_loss_real + dis_loss_fake
+
+        # Discriminator backwards pass and parameter update
+        self.dis_optimizer.zero_grad()
+        # N.B. we need to retain graph as we are not re-running gen_image_batch https://stackoverflow.com/questions/46774641
+        dis_loss.backward(retain_graph=True)
+        self.dis_optimizer.step()
+        
+    def generator_update(self, z_batch):
+        ''' Run generator forward/backward and update parameters '''
+        # Generate images from random inputs
+        z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
+        gen_image_batch = self.generator(z_batch)
+
+        # Generator forward pass 
+        # Target values positive explanation https://arxiv.org/pdf/1701.00160.pdf section:3.2.3
+        logits_fake = self.discriminator(gen_image_batch)
+        gen_loss = self.loss_function(logits_fake, torch.ones(batch_size))
+
+        # Generator backwards pass and parameter update
+        self.gen_optimizer.zero_grad()
+        gen_loss.backward()
+        self.gen_optimizer.step()
+
 
     def train(self, image_dataset, n_epochs, output_dir, max_batch_size=32, z_sample=None):
         '''
         :param image_dataset: list of tensors (C,H,W)
-        '''
-        dis_optimizer = self.optimizer(self.discriminator.parameters())
-        gen_optimizer = self.optimizer(self.generator.parameters())
-
-        loss_function = nn.BCEWithLogitsLoss()
-        
+        '''  
         for epoch in trange(n_epochs, desc='Epoch', leave=True):
 
             data_loader = DataLoader(image_dataset, batch_size=max_batch_size, shuffle=True)
@@ -137,35 +174,15 @@ class DCGAN(object):
 
                 image_batch = image_batch[0] # There are no target labels
                 batch_size = image_batch.shape[0]
+
+                self.discriminator_update(image_batch, z_batch)
+
+                # Run generator update pass twice to avoid fast convergence of discriminator
+                # Generating images with each pass as we are updating parameters
+                self.generator_update(z_batch)
+                self.generator_update(z_batch)
                 
-                # Generate images from random inputs
-                z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
-                gen_image_batch = self.generator(z_batch)
-
-                # Discriminator forward pass with real and fake batches
-                logits_real = self.discriminator(image_batch).squeeze()
-                logits_fake = self.discriminator(gen_image_batch).squeeze()
-
-                dis_loss_real = loss_function(logits_real, torch.ones(batch_size))
-                dis_loss_fake = loss_function(logits_fake, torch.zeros(batch_size))
-                dis_loss = dis_loss_real + dis_loss_fake
-
-                # Discriminator backwards pass and parameter update
-                dis_optimizer.zero_grad()
-                # N.B. we need to retain graph as we are not re-running gen_image_batch https://stackoverflow.com/questions/46774641
-                dis_loss.backward(retain_graph=True)
-                dis_optimizer.step()
                 
-                # Generator forward pass 
-                # Target values explanation https://arxiv.org/pdf/1701.00160.pdf section:3.2.3
-                logits_fake = self.discriminator(gen_image_batch)
-                gen_loss = loss_function(logits_fake, torch.ones(batch_size))
-
-                # Generator backwards pass and parameter update
-                gen_optimizer.zero_grad()
-                gen_loss.backward()
-                gen_optimizer.step()
-
             if epoch % 5 == 0:
                 output_path = Path(output_dir)
                 torch.save(self, output_path / f'checkpoint_{epoch}.pt')
