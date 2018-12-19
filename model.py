@@ -182,19 +182,22 @@ class DCGAN(object):
                 self.generator_update(z_batch)
                 self.generator_update(z_batch)
                 
-                
             if epoch % 5 == 0:
-                output_path = Path(output_dir)
-                torch.save(self, output_path / f'checkpoint_{epoch}.pt')
+                self.save_checkpoint(epoch, output_dir, z_sample)
+                
+    @staticmethod
+    def save_checkpoint(epoch, output_dir, z_sample=None):
+        output_path = Path(output_dir)
+        torch.save(self, output_path / f'checkpoint_{epoch}.pt')
 
-                if z_sample is not None:
-                    with torch.no_grad():
-                        gen_image_sample = self.generator(z_sample)
-                    # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
-                    image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
-                    save_image(image_grid, output_path / f'sample_{epoch}.jpg')
+        if z_sample is not None:
+            with torch.no_grad():
+                gen_image_sample = self.generator(z_sample)
+            # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
+            image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
+            save_image(image_grid, output_path / f'sample_{epoch}.jpg')
+
                         
-
 
 if __name__ == '__main__':
 
