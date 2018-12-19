@@ -105,6 +105,11 @@ class Generator(nn.Module):
         x = self.deconv_block(x)
         return torch.tanh(x)
 
+    @staticmethod
+    def z_sample(*size):
+        ''' Random noise for input to generator '''
+        return torch.FloatTensor(*size).uniform(-1, 1)
+
     
 class DCGAN(object):
 
@@ -134,8 +139,7 @@ class DCGAN(object):
                 batch_size = image_batch.shape[0]
                 
                 # Generate images from random inputs
-                # ganhacks suggests normal dist (uniform dist in original TF)
-                z_batch = torch.randn(batch_size, self.generator.input_size)
+                z_batch = self.generator.z_sample(batch_size, self.generator.input_size)
                 gen_image_batch = self.generator(z_batch)
 
                 # Discriminator forward pass with real and fake batches
@@ -183,13 +187,13 @@ if __name__ == '__main__':
 
     image_dataset = create_dataset(root_dir='images')
 
-    # Random noise inputs for evaluation
-    z_sample = torch.randn(16, z_size)
-
     discriminator = Discriminator(input_dim=image_dim, input_ch=image_ch)
     generator = Generator(input_size=z_size, output_dim=image_dim, output_ch=image_ch)
 
     dcgan = DCGAN(discriminator, generator)
+
+    # Random noise inputs for evaluation
+    z_sample = generator.z_sample(16, z_size)
 
     dcgan.train(
         image_dataset=image_dataset,
