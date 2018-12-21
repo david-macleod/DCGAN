@@ -30,10 +30,10 @@ class Discriminator(nn.Module):
         self.conv3_out_dim = int(np.ceil(self.input_dim / self.stride ** 4))
 
         self.conv_block = nn.Sequential(
-            self.conv_layer(self.input_ch, self.conv0_out_ch),
-            self.conv_layer(self.conv0_out_ch, self.conv1_out_ch, batch_norm=True),
-            self.conv_layer(self.conv1_out_ch, self.conv2_out_ch, batch_norm=True),
-            self.conv_layer(self.conv2_out_ch, self.conv3_out_ch, batch_norm=True)
+            self.conv_layer(self.input_ch, self.conv0_out_ch, batch_norm=False),
+            self.conv_layer(self.conv0_out_ch, self.conv1_out_ch),
+            self.conv_layer(self.conv1_out_ch, self.conv2_out_ch),
+            self.conv_layer(self.conv2_out_ch, self.conv3_out_ch)
         )
 
         self.linear = nn.Linear(self.conv3_out_ch * self.conv3_out_dim ** 2, 1)
@@ -41,14 +41,13 @@ class Discriminator(nn.Module):
         # Initialize parameter values
         self.apply(init_params)
 
-    def conv_layer(self, in_ch, out_ch, batch_norm=False):
+    def conv_layer(self, in_ch, out_ch, batch_norm=True):
         ''' Standard convolutional layer '''
         sequence = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, self.kernel, self.stride, self.padding),
+            nn.BatchNorm2d(out_ch) if batch_norm else None,
             nn.LeakyReLU(0.2)
         )
-        if batch_norm:
-            sequence.add_module('batch_norm', nn.BatchNorm2d(out_ch))
         return sequence
 
     def forward(self, x):
@@ -90,10 +89,11 @@ class Generator(nn.Module):
         # Initialize parameter values
         self.apply(init_params)
 
-    def deconv_layer(self, in_ch, out_ch, output_padding=0):
+    def deconv_layer(self, in_ch, out_ch, output_padding=0, batch_norm=True):
         ''' Standard transposed convolutional layer '''
         sequence = nn.Sequential(
             nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, output_padding),
+            nn.BatchNorm2d(out_ch) if batch_norm else None,
             nn.ReLU()
         )
         return sequence
