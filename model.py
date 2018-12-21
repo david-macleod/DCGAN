@@ -6,49 +6,47 @@ from torch.utils.data.dataloader import DataLoader
 from torchvision.utils import make_grid, save_image
 from tqdm import tqdm, trange
 from pathlib import Path
+from functools import partial
 from utils import create_dataset, init_params, inspect_tensor
 
-''' Based on DCGAN-tensorflow project, modifications highlighted '''
+''' Based on DCGAN-tensorflow project '''
 
-#TODO Add second backwards pass for generators as in DCGAN-tensorflow
-#TODO Try batch norm in generator as in pytorch example
 
 class Discriminator(nn.Module):
+
+    class StandardConv2d(nn.Conv2d): 
+        def __init__(self, *args, **kwargs):
+            super().__init__(kernel_size=5, stride=2, padding=2, *args, **kwargs)
 
     def __init__(self, input_dim, input_ch, init_params=init_params):
         super().__init__()
         self.input_dim = input_dim
         self.input_ch = input_ch
-        self.kernel = 5
-        self.stride = 2
-        self.padding = self.kernel // self.stride
 
         self.conv0_out_ch = 64
         self.conv1_out_ch = 128
         self.conv2_out_ch = 256
         self.conv3_out_ch = 512
-        self.conv3_out_dim = int(np.ceil(self.input_dim / self.stride ** 4))
+        self.conv3_out_dim = int(np.ceil(self.input_dim / 2 ** 4)) # every conv layer downsamples
 
         self.conv_block = nn.Sequential(
-            self.conv_layer(self.input_ch, self.conv0_out_ch, batch_norm=False),
-            self.conv_layer(self.conv0_out_ch, self.conv1_out_ch),
-            self.conv_layer(self.conv1_out_ch, self.conv2_out_ch),
-            self.conv_layer(self.conv2_out_ch, self.conv3_out_ch)
+            self.StandardConv2d(self.input_ch, self.conv0_out_ch),
+            nn.LeakyReLU(0.2),
+            self.StandardConv2d(self.conv0_out_ch, self.conv1_out_ch),
+            nn.BatchNorm2d(self.conv1_out_ch),
+            nn.LeakyReLU(0.2),
+            self.StandardConv2d(self.conv1_out_ch, self.conv2_out_ch),
+            nn.BatchNorm2d(self.conv2_out_ch),
+            nn.LeakyReLU(0.2),
+            self.StandardConv2d(self.conv2_out_ch, self.conv3_out_ch),
+            nn.BatchNorm2d(self.conv3_out_ch),
+            nn.LeakyReLU(0.2)
         )
 
         self.linear = nn.Linear(self.conv3_out_ch * self.conv3_out_dim ** 2, 1)
 
         # Initialize parameter values
         self.apply(init_params)
-
-    def conv_layer(self, in_ch, out_ch, batch_norm=True):
-        ''' Standard convolutional layer '''
-        sequence = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, self.kernel, self.stride, self.padding),
-            nn.BatchNorm2d(out_ch) if batch_norm else None,
-            nn.LeakyReLU(0.2)
-        )
-        return sequence
 
     def forward(self, x):
         ''' Discriminator forward pass '''
@@ -60,43 +58,42 @@ class Discriminator(nn.Module):
 
 class Generator(nn.Module):
 
+    class StandardConvTranspose2d(nn.ConvTranspose2d): 
+        def __init__(self, *args, **kwargs):
+            super().__init__(kernel_size=5, stride=2, padding=2, *args, **kwargs)
+
     def __init__(self, input_size, output_dim, output_ch, init_params=init_params):
         super().__init__()
         self.input_size = input_size
         self.output_dim = output_dim
         self.output_ch = output_ch
-        self.kernel = 5
-        self.stride = 2
-        self.padding = self.kernel // self.stride
-        self.output_padding = 1 
 
-        self.deconv0_in_dim = int(np.ceil(self.output_dim / self.stride ** 4))
+        self.deconv0_in_dim = int(np.ceil(self.output_dim / 2 ** 4)) # every deconv layer upsamples
         self.deconv0_in_ch = 512
         self.deconv0_out_ch = 256
         self.deconv1_out_ch = 128
         self.deconv2_out_ch = 64
         
-        self.linear = nn.Linear(self.input_size, self.deconv0_in_ch * self.deconv0_in_dim ** 2) 
+        self.linear = nn.Linear(self.input_size, self.deconv0_in_ch * self.deconv0_in_dim ** 2)
 
         self.deconv_block = nn.Sequential(
+            nn.BatchNorm2d(self.deconv0_in_ch),
+            nn.ReLU(),
+            self.StandardConvTranspose2d(self.deconv0_in_ch, self.deconv0_out_ch), 
+            nn.BatchNorm2d(self.deconv0_out_ch),
+            nn.ReLU(),
             # output_padding required to ensure shape is inverse of conv2d
-            self.deconv_layer(self.deconv0_in_ch, self.deconv0_out_ch),
-            self.deconv_layer(self.deconv0_out_ch, self.deconv1_out_ch, output_padding=1),
-            self.deconv_layer(self.deconv1_out_ch, self.deconv2_out_ch),
-            self.deconv_layer(self.deconv2_out_ch, self.output_ch, output_padding=1)
+            self.StandardConvTranspose2d(self.deconv0_out_ch, self.deconv1_out_ch, output_padding=1), 
+            nn.BatchNorm2d(self.deconv1_out_ch),
+            nn.ReLU(),
+            self.StandardConvTranspose2d(self.deconv1_out_ch, self.deconv2_out_ch),
+            nn.BatchNorm2d(self.deconv2_out_ch),
+            nn.ReLU(),
+            self.StandardConvTranspose2d(self.deconv2_out_ch, self.output_ch, output_padding=1), 
         )
 
         # Initialize parameter values
         self.apply(init_params)
-
-    def deconv_layer(self, in_ch, out_ch, output_padding=0, batch_norm=True):
-        ''' Standard transposed convolutional layer '''
-        sequence = nn.Sequential(
-            nn.ConvTranspose2d(in_ch, out_ch, self.kernel, self.stride, self.padding, output_padding),
-            nn.BatchNorm2d(out_ch) if batch_norm else None,
-            nn.ReLU()
-        )
-        return sequence
 
     def forward(self, x):
         ''' Generator forward pass '''
@@ -192,8 +189,7 @@ class DCGAN(object):
             # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
             image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
             save_image(image_grid, output_path / f'sample_{epoch}.jpg')
-
-                        
+           
 
 if __name__ == '__main__':
 
