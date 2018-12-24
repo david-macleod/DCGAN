@@ -117,9 +117,14 @@ class DCGAN(object):
         self.gen_optimizer = self.optimizer(self.generator.parameters())
 
         self.loss_function = nn.BCEWithLogitsLoss()
+        
+        self.gen_loss = 0
+        self.dis_loss = 0
+
+        self.step = 0
 
     def optimizer(self, parameters):
-        return torch.optim.Adam(params=parameters, lr=0.0002, betas=(0.9, 0.5))
+        return torch.optim.Adam(params=parameters, lr=0.0002, betas=(0.5, 0.999))
 
     def discriminator_update(self, image_batch, z_batch):
         ''' Run discriminator forward/backward and update parameters '''
@@ -132,12 +137,12 @@ class DCGAN(object):
 
         dis_loss_real = self.loss_function(logits_real, torch.ones(image_batch.shape[0]))
         dis_loss_fake = self.loss_function(logits_fake, torch.zeros(z_batch.shape[0]))
-        dis_loss = dis_loss_real + dis_loss_fake
+        self.dis_loss = dis_loss_real + dis_loss_fake
 
         # Discriminator backwards pass and parameter update
         self.dis_optimizer.zero_grad()
         # N.B. we need to retain graph as we are not re-running gen_image_batch https://stackoverflow.com/questions/46774641
-        dis_loss.backward(retain_graph=True)
+        self.dis_loss.backward(retain_graph=True)
         self.dis_optimizer.step()
         
     def generator_update(self, z_batch):
@@ -148,11 +153,11 @@ class DCGAN(object):
         # Generator forward pass 
         # Target values positive explanation https://arxiv.org/pdf/1701.00160.pdf section:3.2.3
         logits_fake = self.discriminator(gen_image_batch)
-        gen_loss = self.loss_function(logits_fake, torch.ones(z_batch.shape[0]))
+        self.gen_loss = self.loss_function(logits_fake, torch.ones(z_batch.shape[0]))
 
         # Generator backwards pass and parameter update
         self.gen_optimizer.zero_grad()
-        gen_loss.backward()
+        self.gen_loss.backward()
         self.gen_optimizer.step()
 
     def train(self, image_dataset, n_epochs, output_dir, max_batch_size=32, z_sample=None):
@@ -175,21 +180,26 @@ class DCGAN(object):
                 # Generating images with each pass as we are updating parameters
                 self.generator_update(z_batch)
                 self.generator_update(z_batch)
-                
-            if epoch % 5 == 0:
-                self.save_checkpoint(epoch, output_dir, z_sample)
-                
-    def save_checkpoint(self, epoch, output_dir, z_sample=None):
-        output_path = Path(output_dir)
-        torch.save(self, output_path / f'checkpoint_{epoch}.pt')
 
-        if z_sample is not None:
-            with torch.no_grad():
-                gen_image_sample = self.generator(z_sample)
-            # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
-            image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
-            save_image(image_grid, output_path / f'sample_{epoch}.jpg')
-           
+                self.step += 1
+                
+            if z_sample is not None:
+                self.save_sample_images(output_dir, z_sample)
+
+            if epoch % 10 == 0:
+                self.save_checkpoint(output_dir)
+                
+
+    def save_sample_images(self, output_dir, z_sample):
+        with torch.no_grad():
+            gen_image_sample = self.generator(z_sample)
+        # Convert generated image tensors range (-1, 1) to a "grid" tensor range (0, 1)
+        image_grid = make_grid(gen_image_sample, padding=2, normalize=True)
+        save_image(image_grid, Path(output_dir) / f'sample_{self.step}.jpg')
+
+    def save_checkpoint(self, output_dir):
+        torch.save(self, Path(output_dir) / f'checkpoint_{self.step}.pt')
+    
 
 if __name__ == '__main__':
 
@@ -209,7 +219,7 @@ if __name__ == '__main__':
 
     dcgan.train(
         image_dataset=image_dataset,
-        n_epochs=20,
+        n_epochs=150,
         output_dir='train',
         max_batch_size=16,
         z_sample=z_sample
