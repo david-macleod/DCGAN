@@ -3,7 +3,6 @@ import torch.nn as nn
 from torchvision.transforms import Compose, Normalize, ToTensor
 from torchvision.datasets import ImageFolder
 import numpy as np
-from pathlib import Path
 
 def create_dataset(root_dir):
     ''' Create training Dataset of normalized images '''
