@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 
 def create_dataset(root_dir):
-
+    ''' Create training Dataset of normalized images '''
     transforms = Compose([
         ToTensor(),
         Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -15,7 +15,7 @@ def create_dataset(root_dir):
     return ImageFolder(root=root_dir, transform=transforms)
     
 def init_params(module):
-    ''' '''
+    ''' Initialize parameter values for Generator/Discriminator models '''
     classname = module.__class__.__name__
     if 'Conv' in classname:
         nn.init.normal_(module.weight.data, 0.0, 0.02)
@@ -25,10 +25,3 @@ def init_params(module):
     elif 'Linear' in classname:
         nn.init.normal_(module.weight.data, 0.0, 0.02)
         nn.init.constant_(module.bias.data, 0)
-
-def inspect_tensor(self, inputs, output):
-    # input is a tuple of tensors, output is a single tensor
-    print('Inspecting ' + self.__class__.__name__ + ' forward pass')
-    for i, input in enumerate(inputs):
-        print(f'input shape [{i}]:', input.shape)
-    print('output shape:', output.shape)

@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,10 +8,9 @@ from torchvision.utils import make_grid, save_image
 from tqdm import tqdm, trange
 from pathlib import Path
 from functools import partial
-from utils import create_dataset, init_params, inspect_tensor
+from utils import create_dataset, init_params
 
-''' Based on DCGAN-tensorflow project '''
-
+''' Deep Convolutional Generative Adversarial Network, based on DCGAN-tensorflow project '''
 
 class Discriminator(nn.Module):
 
@@ -19,6 +19,11 @@ class Discriminator(nn.Module):
             super().__init__(kernel_size=5, stride=2, padding=2, *args, **kwargs)
 
     def __init__(self, input_dim, input_ch, init_params=init_params):
+        '''
+        :param input_dim: int number of pixels width/height in input images
+        :param input_ch: int number of channels in input images
+        :param init_params: function applied to Module to initialize parameters
+        '''
         super().__init__()
         self.input_dim = input_dim
         self.input_ch = input_ch
@@ -58,11 +63,18 @@ class Discriminator(nn.Module):
 
 class Generator(nn.Module):
 
-    class StandardConvTranspose2d(nn.ConvTranspose2d): 
+    class StandardConvTranspose2d(nn.ConvTranspose2d):
+
         def __init__(self, *args, **kwargs):
             super().__init__(kernel_size=5, stride=2, padding=2, *args, **kwargs)
 
     def __init__(self, input_size, output_dim, output_ch, init_params=init_params):
+        '''
+        :param input_size: size of input noise vector to Generator
+        :param output_dim: int number of pixels width/height in output images
+        :param output_ch: int number of channels in output images
+        :param init_params: function applied to Module to initialize parameters
+        '''
         super().__init__()
         self.input_size = input_size
         self.output_dim = output_dim
@@ -95,17 +107,17 @@ class Generator(nn.Module):
         # Initialize parameter values
         self.apply(init_params)
 
+    def z_sample(self, batch_size):
+        ''' Gaussian noise for input to generator '''
+        return torch.randn(batch_size, self.input_size)
+
     def forward(self, x):
         ''' Generator forward pass '''
         x = self.linear(x)
         x = x.reshape(x.shape[0], self.deconv0_in_ch, self.deconv0_in_dim, self.deconv0_in_dim)
         x = self.deconv_block(x)
         return torch.tanh(x)
-
-    def z_sample(self, batch_size):
-        ''' Random noise for input to generator '''
-        return torch.FloatTensor(batch_size, self.input_size).uniform_(-1, 1)
-
+    
     
 class DCGAN(object):
 
@@ -160,9 +172,14 @@ class DCGAN(object):
         self.gen_loss.backward()
         self.gen_optimizer.step()
 
-    def train(self, image_dataset, n_epochs, output_dir, max_batch_size=32, z_sample=None):
+    def train(self, image_dataset, n_epochs, output_dir, max_batch_size, z_sample=None, checkpoint=10):
         '''
         :param image_dataset: list of tensors (C,H,W)
+        :param n_epochs: number of epochs to train over
+        :param output_dir: output_directory to save checkpoints / generated sample images
+        :param max_batch_size: batch size of training data
+        :param z_sample: noise tensor input to Generator (N,D)
+        :param checkpoint: int number of epochs between each checkpoint save
         '''  
         for epoch in trange(n_epochs, desc='Epoch', leave=True):
 
@@ -186,7 +203,7 @@ class DCGAN(object):
             if z_sample is not None:
                 self.save_sample_images(output_dir, z_sample)
 
-            if epoch % 10 == 0:
+            if epoch % checkpoint == 0:
                 self.save_checkpoint(output_dir)
                 
 
@@ -203,24 +220,31 @@ class DCGAN(object):
 
 if __name__ == '__main__':
 
-    image_ch = 3
-    image_dim = 150
-    z_size = 100
+    argparser = argparse.ArgumentParser()
 
-    image_dataset = create_dataset(root_dir='images')
+    argparser.add_argument('--n_epochs', dest='n_epochs', type=int, default=200, help='number of training epochs')
+    argparser.add_argument('--max_batch_size', dest='max_batch_size', type=int, default=16, help='size of each training batch')
+    argparser.add_argument('--image_ch', dest='image_ch', type=int, default=3, help='number of channels in image')
+    argparser.add_argument('--image_dim', dest='image_dim', type=int, default=150, help='height/width pixels in image')
+    argparser.add_argument('--z_size', dest='z_size', type=int, default=100, help='size of generator "noise" input' )
+    argparser.add_argument('--input_dir', dest='input_dir', type=str, default='images', help='directory to read images')
+    argparser.add_argument('--output_dir', dest='output_dir', type=str, default='train', help='directory to save checkpoints')
 
-    discriminator = Discriminator(input_dim=image_dim, input_ch=image_ch)
-    generator = Generator(input_size=z_size, output_dim=image_dim, output_ch=image_ch)
+    args = argparser.parse_args()
+
+    discriminator = Discriminator(input_dim=args.image_dim, input_ch=args.image_ch)
+    generator = Generator(input_size=args.z_size, output_dim=args.image_dim, output_ch=args.image_ch)
 
     dcgan = DCGAN(discriminator, generator)
 
-    # Random noise inputs for evaluation
-    z_sample = generator.z_sample(batch_size=16)
+    image_dataset = create_dataset(root_dir=args.input_dir)
+
+    z_sample = generator.z_sample(batch_size=args.max_batch_size)
 
     dcgan.train(
         image_dataset=image_dataset,
-        n_epochs=150,
-        output_dir='train',
-        max_batch_size=16,
+        n_epochs=args.n_epochs,
+        output_dir=args.output_dir,
+        max_batch_size=args.max_batch_size,
         z_sample=z_sample
     )
