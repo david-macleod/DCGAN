@@ -128,7 +128,7 @@ class DCGAN(object):
         self.dis_optimizer = self.optimizer(self.discriminator.parameters())
         self.gen_optimizer = self.optimizer(self.generator.parameters())
 
-        self.loss_function = nn.BCEWithLogitsLoss()
+        self.loss_function = nn.BCEWithLogitsLoss() # Used for numerical stability, instead of separating sigmoid and loss
         
         self.gen_loss = 0
         self.dis_loss = 0
@@ -154,7 +154,7 @@ class DCGAN(object):
         # Discriminator backwards pass and parameter update
         self.dis_optimizer.zero_grad()
         # N.B. we need to retain graph as we are not re-running gen_image_batch https://stackoverflow.com/questions/46774641
-        self.dis_loss.backward(retain_graph=True)
+        self.dis_loss.backward()
         self.dis_optimizer.step()
         
     def generator_update(self, z_batch):
